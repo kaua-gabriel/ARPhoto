@@ -6,31 +6,22 @@ using TMPro;
 
 public class ARPhotoManager : MonoBehaviour
 {
-    [Header("HUD")]
-    public GameObject HUDPanel;            // HUDPanel
-    public Button TakePhotoButton;         // TakePhoto
+    [Header("UI")]
+    public GameObject photoUI;             // CanvasFoto/PhotoUI
+    public Button takePhotoButton;         // CanvasFoto/PhotoUI/TakePhoto
+    public GameObject photoPreviewPanel;   // CanvasFoto/PhotoUI/photoPreviewPanel
+    public Image photoPreviewImage;        // CanvasFoto/PhotoUI/photoPreviewPanel/photoPreviewImage
+    public Button saveButton;              // CanvasFoto/PhotoUI/photoPreviewPanel/saveButton
+    public Button deleteButton;            // CanvasFoto/PhotoUI/photoPreviewPanel/deleteButton
     public TMP_Text dateTimeText;          // HUData/dateTimeText
-
-    [Header("Preview")]
-    public GameObject photoPreviewPanel;   // photoPreviewPanel
-    public Image photoPreviewImage;        // photoPreviewImage
-    public TMP_Text previewDateTimeText;   // pode reutilizar dateTimeText ou novo TMP_Text
-    public Button saveButton;              // saveButton
-    public Button deleteButton;            // deleteButton
-
-    [Header("Feedback")]
-    public TMP_Text messageText;           // opcional, para mensagens rápidas
 
     private Texture2D capturedTexture;
 
     private void Start()
     {
-        HUDPanel.SetActive(true);
         photoPreviewPanel.SetActive(false);
-        if (messageText != null)
-            messageText.gameObject.SetActive(false);
 
-        TakePhotoButton.onClick.AddListener(TakePhoto);
+        takePhotoButton.onClick.AddListener(TakePhoto);
         saveButton.onClick.AddListener(SavePhotoToGallery);
         deleteButton.onClick.AddListener(DeletePhoto);
     }
@@ -48,7 +39,8 @@ public class ARPhotoManager : MonoBehaviour
 
     private IEnumerator CapturePhotoCoroutine()
     {
-        HUDPanel.SetActive(false);
+        // Esconde a UI antes de capturar
+        photoUI.SetActive(false);
         yield return new WaitForEndOfFrame();
 
         int width = Screen.width;
@@ -57,33 +49,31 @@ public class ARPhotoManager : MonoBehaviour
         capturedTexture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
         capturedTexture.Apply();
 
-        HUDPanel.SetActive(true);
-
-        photoPreviewImage.sprite = Sprite.Create(capturedTexture, new Rect(0, 0, capturedTexture.width, capturedTexture.height), new Vector2(0.5f, 0.5f));
-        previewDateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        // Restaura a UI e mostra o preview
+        photoUI.SetActive(true);
+        photoPreviewImage.sprite = Sprite.Create(
+            capturedTexture,
+            new Rect(0, 0, capturedTexture.width, capturedTexture.height),
+            new Vector2(0.5f, 0.5f));
 
         photoPreviewPanel.SetActive(true);
-        photoPreviewPanel.transform.SetAsLastSibling();
+        photoPreviewPanel.transform.SetAsLastSibling(); // garante que o preview fica por cima
     }
 
     private void SavePhotoToGallery()
     {
-        if (capturedTexture == null)
-        {
-            ShowMessage("Nenhuma foto para salvar!");
-            return;
-        }
+        if (capturedTexture == null) return;
 
-        NativeGallery.SaveImageToGallery(capturedTexture, "ARPhotos", $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png",
+        NativeGallery.SaveImageToGallery(
+            capturedTexture,
+            "ARPhotos",
+            $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png",
             (success, path) =>
             {
-                if (success)
-                    ShowMessage("📸 Foto salva na galeria!");
-                else
-                    ShowMessage("❌ Erro ao salvar foto!");
+                Debug.Log(success ? $"📸 Foto salva em: {path}" : "❌ Erro ao salvar foto!");
             });
 
-        ClosePreview();
+        photoPreviewPanel.SetActive(false);
     }
 
     private void DeletePhoto()
@@ -94,31 +84,7 @@ public class ARPhotoManager : MonoBehaviour
             capturedTexture = null;
         }
 
-        ShowMessage("🗑 Foto descartada");
-        ClosePreview();
-    }
-
-    private void ClosePreview()
-    {
-        photoPreviewPanel.SetActive(false);
         photoPreviewImage.sprite = null;
-        HUDPanel.SetActive(true);
-    }
-
-    private void ShowMessage(string msg)
-    {
-        if (messageText == null) return;
-
-        messageText.text = msg;
-        messageText.gameObject.SetActive(true);
-
-        CancelInvoke(nameof(HideMessage));
-        Invoke(nameof(HideMessage), 2f);
-    }
-
-    private void HideMessage()
-    {
-        if (messageText != null)
-            messageText.gameObject.SetActive(false);
+        photoPreviewPanel.SetActive(false);
     }
 }
