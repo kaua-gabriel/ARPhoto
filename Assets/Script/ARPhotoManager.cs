@@ -1,18 +1,22 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using System.IO;
 using System.Collections;
+using System;
+using TMPro;
 
 public class ARPhotoManager : MonoBehaviour
 {
     [Header("UI")]
-    public GameObject photoPreviewPanel; // Painel que aparece com a foto
-    public Image photoPreviewImage;      // Imagem UI que mostra a foto
+    public GameObject photoPreviewPanel;
+    public Image photoPreviewImage;
     public Button saveButton;
     public Button deleteButton;
+    public TMP_Text dateTimeText;
+
+
 
     private Texture2D capturedTexture;
-
     private string folderPath;
 
     private void Start()
@@ -22,9 +26,14 @@ public class ARPhotoManager : MonoBehaviour
             Directory.CreateDirectory(folderPath);
 
         photoPreviewPanel.SetActive(false);
-
         saveButton.onClick.AddListener(SavePhoto);
         deleteButton.onClick.AddListener(DeletePhoto);
+    }
+
+    private void Update()
+    {
+        // Atualiza a data/hora no Canvas constantemente
+        dateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
     }
 
     public void TakePhoto()
@@ -34,8 +43,7 @@ public class ARPhotoManager : MonoBehaviour
 
     private IEnumerator CapturePhoto()
     {
-        // Espera o final do frame para capturar a tela
-        yield return new WaitForEndOfFrame();
+        yield return new WaitForEndOfFrame(); // espera frame final
 
         int width = Screen.width;
         int height = Screen.height;
@@ -44,20 +52,23 @@ public class ARPhotoManager : MonoBehaviour
         capturedTexture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
         capturedTexture.Apply();
 
-        // Mostra a foto na tela
-        photoPreviewImage.sprite = Sprite.Create(capturedTexture, new Rect(0, 0, capturedTexture.width, capturedTexture.height), new Vector2(0.5f, 0.5f));
+        // A data/hora já está visível no Canvas, então não precisa adicionar manualmente
+        photoPreviewImage.sprite = Sprite.Create(capturedTexture,
+            new Rect(0, 0, capturedTexture.width, capturedTexture.height),
+            new Vector2(0.5f, 0.5f));
+
         photoPreviewPanel.SetActive(true);
     }
 
     private void SavePhoto()
     {
-        string fileName = $"Photo_{System.DateTime.Now:yyyyMMdd_HHmmss}.png";
+        string fileName = $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png";
         string filePath = Path.Combine(folderPath, fileName);
 
         byte[] bytes = capturedTexture.EncodeToPNG();
         File.WriteAllBytes(filePath, bytes);
 
-        Debug.Log($"Foto salva em: {filePath}");
+        Debug.Log($"📸 Foto salva em: {filePath}");
         photoPreviewPanel.SetActive(false);
     }
 
