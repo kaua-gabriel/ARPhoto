@@ -1,81 +1,124 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
-using System.IO;
 using System.Collections;
 using System;
 using TMPro;
 
 public class ARPhotoManager : MonoBehaviour
 {
-    [Header("UI")]
-    public GameObject photoPreviewPanel;
-    public Image photoPreviewImage;
-    public Button saveButton;
-    public Button deleteButton;
-    public TMP_Text dateTimeText;
+    [Header("HUD")]
+    public GameObject HUDPanel;            // HUDPanel
+    public Button TakePhotoButton;         // TakePhoto
+    public TMP_Text dateTimeText;          // HUData/dateTimeText
 
+    [Header("Preview")]
+    public GameObject photoPreviewPanel;   // photoPreviewPanel
+    public Image photoPreviewImage;        // photoPreviewImage
+    public TMP_Text previewDateTimeText;   // pode reutilizar dateTimeText ou novo TMP_Text
+    public Button saveButton;              // saveButton
+    public Button deleteButton;            // deleteButton
 
+    [Header("Feedback")]
+    public TMP_Text messageText;           // opcional, para mensagens rápidas
 
     private Texture2D capturedTexture;
-    private string folderPath;
 
     private void Start()
     {
-        folderPath = Path.Combine(Application.persistentDataPath, "ARPhotos");
-        if (!Directory.Exists(folderPath))
-            Directory.CreateDirectory(folderPath);
-
+        HUDPanel.SetActive(true);
         photoPreviewPanel.SetActive(false);
-        saveButton.onClick.AddListener(SavePhoto);
+        if (messageText != null)
+            messageText.gameObject.SetActive(false);
+
+        TakePhotoButton.onClick.AddListener(TakePhoto);
+        saveButton.onClick.AddListener(SavePhotoToGallery);
         deleteButton.onClick.AddListener(DeletePhoto);
     }
 
     private void Update()
     {
-        // Atualiza a data/hora no Canvas constantemente
-        dateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        if (dateTimeText != null)
+            dateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
     }
 
     public void TakePhoto()
     {
-        StartCoroutine(CapturePhoto());
+        StartCoroutine(CapturePhotoCoroutine());
     }
 
-    private IEnumerator CapturePhoto()
+    private IEnumerator CapturePhotoCoroutine()
     {
-        yield return new WaitForEndOfFrame(); // espera frame final
+        HUDPanel.SetActive(false);
+        yield return new WaitForEndOfFrame();
 
         int width = Screen.width;
         int height = Screen.height;
-
         capturedTexture = new Texture2D(width, height, TextureFormat.RGB24, false);
         capturedTexture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
         capturedTexture.Apply();
 
-        // A data/hora já está visível no Canvas, então não precisa adicionar manualmente
-        photoPreviewImage.sprite = Sprite.Create(capturedTexture,
-            new Rect(0, 0, capturedTexture.width, capturedTexture.height),
-            new Vector2(0.5f, 0.5f));
+        HUDPanel.SetActive(true);
+
+        photoPreviewImage.sprite = Sprite.Create(capturedTexture, new Rect(0, 0, capturedTexture.width, capturedTexture.height), new Vector2(0.5f, 0.5f));
+        previewDateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
         photoPreviewPanel.SetActive(true);
+        photoPreviewPanel.transform.SetAsLastSibling();
     }
 
-    private void SavePhoto()
+    private void SavePhotoToGallery()
     {
-        string fileName = $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-        string filePath = Path.Combine(folderPath, fileName);
+        if (capturedTexture == null)
+        {
+            ShowMessage("Nenhuma foto para salvar!");
+            return;
+        }
 
-        byte[] bytes = capturedTexture.EncodeToPNG();
-        File.WriteAllBytes(filePath, bytes);
+        NativeGallery.SaveImageToGallery(capturedTexture, "ARPhotos", $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png",
+            (success, path) =>
+            {
+                if (success)
+                    ShowMessage("📸 Foto salva na galeria!");
+                else
+                    ShowMessage("❌ Erro ao salvar foto!");
+            });
 
-        Debug.Log($"📸 Foto salva em: {filePath}");
-        photoPreviewPanel.SetActive(false);
+        ClosePreview();
     }
 
     private void DeletePhoto()
     {
-        Debug.Log("Foto descartada");
+        if (capturedTexture != null)
+        {
+            Destroy(capturedTexture);
+            capturedTexture = null;
+        }
+
+        ShowMessage("🗑 Foto descartada");
+        ClosePreview();
+    }
+
+    private void ClosePreview()
+    {
         photoPreviewPanel.SetActive(false);
-        Destroy(capturedTexture);
+        photoPreviewImage.sprite = null;
+        HUDPanel.SetActive(true);
+    }
+
+    private void ShowMessage(string msg)
+    {
+        if (messageText == null) return;
+
+        messageText.text = msg;
+        messageText.gameObject.SetActive(true);
+
+        CancelInvoke(nameof(HideMessage));
+        Invoke(nameof(HideMessage), 2f);
+    }
+
+    private void HideMessage()
+    {
+        if (messageText != null)
+            messageText.gameObject.SetActive(false);
     }
 }
