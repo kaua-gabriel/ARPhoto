@@ -1,90 +1,109 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using System.IO;
 using System.Collections;
-using System;
 using TMPro;
+using System;
 
 public class ARPhotoManager : MonoBehaviour
 {
     [Header("UI")]
-    public GameObject photoUI;             // CanvasFoto/PhotoUI
-    public Button takePhotoButton;         // CanvasFoto/PhotoUI/TakePhoto
-    public GameObject photoPreviewPanel;   // CanvasFoto/PhotoUI/photoPreviewPanel
-    public Image photoPreviewImage;        // CanvasFoto/PhotoUI/photoPreviewPanel/photoPreviewImage
-    public Button saveButton;              // CanvasFoto/PhotoUI/photoPreviewPanel/saveButton
-    public Button deleteButton;            // CanvasFoto/PhotoUI/photoPreviewPanel/deleteButton
-    public TMP_Text dateTimeText;          // HUData/dateTimeText
+    public GameObject photoHUDPanel;      // painel principal (HUD da câmera)
+    public GameObject photoPreviewPanel;  // painel de prévia
+    public RawImage photoPreviewImage;
+    public Button saveButton;
+    public Button deleteButton;
+    public TMP_Text dateTimeText;
 
     private Texture2D capturedTexture;
+    private string folderPath;
 
     private void Start()
     {
-        photoPreviewPanel.SetActive(false);
+        // Cria pasta de fotos internas
+        folderPath = Path.Combine(Application.persistentDataPath, "ARPhotos");
+        if (!Directory.Exists(folderPath))
+            Directory.CreateDirectory(folderPath);
 
-        takePhotoButton.onClick.AddListener(TakePhoto);
-        saveButton.onClick.AddListener(SavePhotoToGallery);
-        deleteButton.onClick.AddListener(DeletePhoto);
+        // Inicializa os painéis
+        photoPreviewPanel.SetActive(false);
+        photoHUDPanel.SetActive(true);
+
+        // Liga os botões
+        if (saveButton != null)
+            saveButton.onClick.AddListener(SavePhoto);
+        if (deleteButton != null)
+            deleteButton.onClick.AddListener(DeletePhoto);
     }
 
     private void Update()
     {
+        // Atualiza data/hora em tempo real
         if (dateTimeText != null)
             dateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
     }
 
+    // Tira a foto
     public void TakePhoto()
     {
-        StartCoroutine(CapturePhotoCoroutine());
+        StartCoroutine(CapturePhoto());
     }
 
-    private IEnumerator CapturePhotoCoroutine()
+    private IEnumerator CapturePhoto()
     {
-        // Esconde a UI antes de capturar
-        photoUI.SetActive(false);
         yield return new WaitForEndOfFrame();
 
         int width = Screen.width;
         int height = Screen.height;
+
         capturedTexture = new Texture2D(width, height, TextureFormat.RGB24, false);
         capturedTexture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
         capturedTexture.Apply();
 
-        // Restaura a UI e mostra o preview
-        photoUI.SetActive(true);
-        photoPreviewImage.sprite = Sprite.Create(
-            capturedTexture,
-            new Rect(0, 0, capturedTexture.width, capturedTexture.height),
-            new Vector2(0.5f, 0.5f));
-
+        photoPreviewImage.texture = capturedTexture;
+        photoHUDPanel.SetActive(false);
         photoPreviewPanel.SetActive(true);
-        photoPreviewPanel.transform.SetAsLastSibling(); // garante que o preview fica por cima
     }
 
-    private void SavePhotoToGallery()
+    // Salva e volta pro HUD
+    public void SavePhoto()
     {
         if (capturedTexture == null) return;
 
-        NativeGallery.SaveImageToGallery(
-            capturedTexture,
-            "ARPhotos",
-            $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png",
-            (success, path) =>
-            {
-                Debug.Log(success ? $"📸 Foto salva em: {path}" : "❌ Erro ao salvar foto!");
-            });
+        string fileName = $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+        string filePath = Path.Combine(folderPath, fileName);
 
-        photoPreviewPanel.SetActive(false);
+        File.WriteAllBytes(filePath, capturedTexture.EncodeToPNG());
+        Debug.Log($"📸 Foto salva em: {filePath}");
+
+#if UNITY_ANDROID || UNITY_IOS
+        // Envia pra galeria (opcional)
+        NativeGallery.SaveImageToGallery(filePath, "AR Photos", fileName);
+        Debug.Log("✅ Foto enviada para a galeria");
+#endif
+
+        // Limpa preview e volta
+        ReturnToCameraHUD("✅ Foto salva");
     }
 
-    private void DeletePhoto()
+    // Exclui e volta pro HUD
+    public void DeletePhoto()
     {
         if (capturedTexture != null)
-        {
             Destroy(capturedTexture);
-            capturedTexture = null;
-        }
 
-        photoPreviewImage.sprite = null;
+        ReturnToCameraHUD("❌ Foto descartada");
+    }
+
+    // ---- Função auxiliar para retornar à câmera ----
+    private void ReturnToCameraHUD(string logMsg)
+    {
+        capturedTexture = null;
+        photoPreviewImage.texture = null;
+
         photoPreviewPanel.SetActive(false);
+        photoHUDPanel.SetActive(true);
+
+        Debug.Log(logMsg);
     }
 }
