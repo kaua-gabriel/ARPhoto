@@ -1,109 +1,155 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
-using System.IO;
+using UnityEngine.Networking;
 using System.Collections;
 using TMPro;
-using System;
+using System.IO;
 
 public class ARPhotoManager : MonoBehaviour
 {
     [Header("UI")]
-    public GameObject photoHUDPanel;      // painel principal (HUD da câmera)
-    public GameObject photoPreviewPanel;  // painel de prévia
+    public GameObject photoHUDPanel;       // CanvasHUD
+    public GameObject photoPreviewPanel;   // CanvasPreview
     public RawImage photoPreviewImage;
     public Button saveButton;
     public Button deleteButton;
-    public TMP_Text dateTimeText;
+    public TMP_Text feedbackText;          // Texto TMP
+
+    [Header("Config")]
+    public int maxPhotosPerSession = 5;
+    public int maxPhotoSizeMB = 5;
 
     private Texture2D capturedTexture;
-    private string folderPath;
+    private int photosSent = 0;
+    private bool isCapturing = false;
 
     private void Start()
     {
-        // Cria pasta de fotos internas
-        folderPath = Path.Combine(Application.persistentDataPath, "ARPhotos");
-        if (!Directory.Exists(folderPath))
-            Directory.CreateDirectory(folderPath);
-
-        // Inicializa os painéis
-        photoPreviewPanel.SetActive(false);
+        // Inicializa painéis
         photoHUDPanel.SetActive(true);
+        photoPreviewPanel.SetActive(false);
+        feedbackText.gameObject.SetActive(false);
 
-        // Liga os botões
-        if (saveButton != null)
-            saveButton.onClick.AddListener(SavePhoto);
-        if (deleteButton != null)
-            deleteButton.onClick.AddListener(DeletePhoto);
+        saveButton.onClick.AddListener(OnSaveClicked);
+        deleteButton.onClick.AddListener(OnDeleteClicked);
     }
 
-    private void Update()
-    {
-        // Atualiza data/hora em tempo real
-        if (dateTimeText != null)
-            dateTimeText.text = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
-    }
-
-    // Tira a foto
     public void TakePhoto()
     {
-        StartCoroutine(CapturePhoto());
+        if (isCapturing) return;
+
+        if (photosSent >= maxPhotosPerSession)
+        {
+            ShowFeedback(" Limite de 5 fotos atingido!");
+            return;
+        }
+
+        StartCoroutine(CapturePhotoFlow());
     }
 
-    private IEnumerator CapturePhoto()
+    private IEnumerator CapturePhotoFlow()
     {
+        isCapturing = true;
+
+        // Oculta HUD e mostra feedback
+        photoHUDPanel.SetActive(false);
+        feedbackText.text = "📸 Tirando foto...";
+        feedbackText.gameObject.SetActive(true);
+
+        // Espera o frame terminar de desenhar
         yield return new WaitForEndOfFrame();
 
+        // Captura a tela
         int width = Screen.width;
         int height = Screen.height;
-
         capturedTexture = new Texture2D(width, height, TextureFormat.RGB24, false);
         capturedTexture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
         capturedTexture.Apply();
 
+        // Aplica na preview
         photoPreviewImage.texture = capturedTexture;
-        photoHUDPanel.SetActive(false);
         photoPreviewPanel.SetActive(true);
+
+        // Oculta feedback
+        feedbackText.gameObject.SetActive(false);
+
+        isCapturing = false;
     }
 
-    // Salva e volta pro HUD
-    public void SavePhoto()
+
+
+
+    private void OnSaveClicked()
     {
         if (capturedTexture == null) return;
 
-        string fileName = $"Photo_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-        string filePath = Path.Combine(folderPath, fileName);
+        byte[] pngData = capturedTexture.EncodeToPNG();
+        float sizeMB = pngData.Length / (1024f * 1024f);
 
-        File.WriteAllBytes(filePath, capturedTexture.EncodeToPNG());
-        Debug.Log($"📸 Foto salva em: {filePath}");
+        if (sizeMB > maxPhotoSizeMB)
+        {
+            ShowFeedback(" Foto muito grande!");
+            return;
+        }
 
-#if UNITY_ANDROID || UNITY_IOS
-        // Envia pra galeria (opcional)
-        NativeGallery.SaveImageToGallery(filePath, "AR Photos", fileName);
-        Debug.Log("✅ Foto enviada para a galeria");
-#endif
-
-        // Limpa preview e volta
-        ReturnToCameraHUD("✅ Foto salva");
+        StartCoroutine(UploadPhoto(pngData));
     }
 
-    // Exclui e volta pro HUD
-    public void DeletePhoto()
+    private void OnDeleteClicked()
+    {
+        ResetPhotoState();
+        ShowFeedback(" Foto descartada");
+    }
+
+    private IEnumerator UploadPhoto(byte[] imageData)
+    {
+        string fileName = "foto_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
+
+        WWWForm form = new WWWForm();
+        form.AddBinaryData("photo", imageData, fileName, "image/png");
+
+        // 🔹 URL de teste — troque depois pelo seu PHP
+        using (UnityWebRequest www = UnityWebRequest.Post("https://seudominio.com/upload_photo.php", form))
+        {
+            yield return www.SendWebRequest();
+
+            if (www.result == UnityWebRequest.Result.Success && www.downloadHandler.text.Contains("OK"))
+            {
+                photosSent++;
+                ShowFeedback(" Foto enviada com sucesso!");
+            }
+            else
+            {
+                ShowFeedback(" Erro ao enviar foto!");
+            }
+        }
+
+        ResetPhotoState();
+    }
+
+    private void ResetPhotoState()
     {
         if (capturedTexture != null)
             Destroy(capturedTexture);
 
-        ReturnToCameraHUD("❌ Foto descartada");
-    }
-
-    // ---- Função auxiliar para retornar à câmera ----
-    private void ReturnToCameraHUD(string logMsg)
-    {
         capturedTexture = null;
         photoPreviewImage.texture = null;
 
         photoPreviewPanel.SetActive(false);
         photoHUDPanel.SetActive(true);
+    }
 
-        Debug.Log(logMsg);
+    private void ShowFeedback(string message)
+    {
+        StopCoroutine(nameof(HideFeedback));
+        feedbackText.text = message;
+        feedbackText.gameObject.SetActive(true);
+        StartCoroutine(HideFeedback());
+    }
+
+    private IEnumerator HideFeedback()
+    {
+        yield return new WaitForSeconds(2.5f);
+        feedbackText.gameObject.SetActive(false);
     }
 }
