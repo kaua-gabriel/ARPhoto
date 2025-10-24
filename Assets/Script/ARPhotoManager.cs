@@ -76,9 +76,6 @@ public class ARPhotoManager : MonoBehaviour
         isCapturing = false;
     }
 
-
-
-
     private void OnSaveClicked()
     {
         if (capturedTexture == null) return;
@@ -92,7 +89,11 @@ public class ARPhotoManager : MonoBehaviour
             return;
         }
 
-        StartCoroutine(UploadPhoto(pngData));
+        // 🔹 Envio para Webhook.site (teste)
+        StartCoroutine(SendPhotoToWebhook(pngData));
+
+        // 🔹 Envio para PHP original (se quiser ativar depois)
+        // StartCoroutine(UploadPhoto(pngData));
     }
 
     private void OnDeleteClicked()
@@ -121,6 +122,33 @@ public class ARPhotoManager : MonoBehaviour
             else
             {
                 ShowFeedback(" Erro ao enviar foto!");
+            }
+        }
+
+        ResetPhotoState();
+    }
+
+    // 🔹 Método de teste para Webhook.site
+    private IEnumerator SendPhotoToWebhook(byte[] imageData)
+    {
+        string fileName = "foto_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
+
+        WWWForm form = new WWWForm();
+        form.AddBinaryData("photo", imageData, fileName, "image/png");
+
+        // 🔹 Troque pela URL do seu Webhook.site
+        using (UnityWebRequest www = UnityWebRequest.Post("https://webhook.site/1c21a47a-2ba1-4e5b-93e8-17cec0912da7", form))
+        {
+            yield return www.SendWebRequest();
+
+            if (www.result == UnityWebRequest.Result.Success)
+            {
+                photosSent++;
+                ShowFeedback(" Foto enviada para teste!");
+            }
+            else
+            {
+                ShowFeedback(" Erro ao enviar para teste!");
             }
         }
 
